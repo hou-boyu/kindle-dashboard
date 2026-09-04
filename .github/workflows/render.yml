@@ -2,8 +2,8 @@ name: Render Kindle Dashboard
 
 on:
   schedule:
-    # 每 20 分钟；免费账号实际可能延迟数分钟到一小时
-    - cron: "*/20 * * * *"
+    # 每个整点；免费账号实际可能延迟几分钟
+    - cron: "0 * * * *"
   workflow_dispatch:
   push:
     paths:
@@ -49,9 +49,9 @@ jobs:
           DAYS_AHEAD: "7"
           DASHBOARD_TITLE: 出门看板
           OUTPUT_PATH: site/dashboard.png
-          WEATHER_CITY: 上海
-          WEATHER_LAT: "31.2304"
-          WEATHER_LON: "121.4737"
+          WEATHER_CITY: 北京石景山
+          WEATHER_LAT: "39.9063"
+          WEATHER_LON: "116.2230"
         run: |
           if [ -z "$CALENDAR_ICS_URL" ]; then
             echo "请在仓库 Secrets 中设置 CALENDAR_ICS_URL"

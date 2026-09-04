@@ -81,10 +81,23 @@ WMO_WEATHER = {
     99: "雷阵雨",
 }
 TIP_GROUPS = [
-    ("出门前", ["关火", "关水", "关窗"]),
+    ("出门前", ["关火", "关水", "关窗", "断电"]),
     ("随身", ["带钥匙", "戴戒指", "戴手表"]),
     ("家里", ["喂猫", "浇花", "扔垃圾"]),
 ]
+
+# 固定公历纪念日（不含农历；母亲节/父亲节按星期推算）
+SOLAR_FESTIVALS = {
+    (1, 1): "元旦",
+    (3, 8): "妇女节",
+    (5, 1): "劳动节",
+    (5, 4): "青年节",
+    (6, 1): "儿童节",
+    (7, 1): "建党节",
+    (8, 1): "建军节",
+    (9, 10): "教师节",
+    (10, 1): "国庆节",
+}
 
 
 @dataclass
@@ -277,14 +290,28 @@ def lunar_text(d: date) -> str:
     return f"农历{main}"
 
 
+def nth_weekday(year: int, month: int, weekday: int, n: int) -> date:
+    """Return the n-th weekday in month (weekday: Mon=0 ... Sun=6)."""
+    first = date(year, month, 1)
+    offset = (weekday - first.weekday()) % 7
+    return first + timedelta(days=offset + 7 * (n - 1))
+
+
 def festival_text(d: date) -> str:
+    """Return festival names, or empty string when none."""
     names: list[str] = []
     if cn_calendar is not None:
-        on_holiday, holiday_name = cn_calendar.get_holiday_detail(d)
+        _on_holiday, holiday_name = cn_calendar.get_holiday_detail(d)
         if holiday_name:
             names.append(HOLIDAY_CN.get(str(holiday_name), str(holiday_name)))
-        elif on_holiday:
-            names.append("节日")
+    solar = SOLAR_FESTIVALS.get((d.month, d.day))
+    if solar and solar not in names:
+        names.append(solar)
+    # 母亲节：5 月第二个周日；父亲节：6 月第三个周日
+    if d == nth_weekday(d.year, 5, 6, 2) and "母亲节" not in names:
+        names.append("母亲节")
+    if d == nth_weekday(d.year, 6, 6, 3) and "父亲节" not in names:
+        names.append("父亲节")
     lunar = ZhDate.from_datetime(datetime(d.year, d.month, d.day))
     fest = LUNAR_FESTIVALS.get((lunar.lunar_month, lunar.lunar_day))
     if fest and fest not in names:
@@ -292,7 +319,7 @@ def festival_text(d: date) -> str:
     next_day = ZhDate.from_datetime(datetime(d.year, d.month, d.day) + timedelta(days=1))
     if next_day.lunar_month == 1 and next_day.lunar_day == 1 and "除夕" not in names:
         names.append("除夕")
-    return " · ".join(names) if names else "今日无节日"
+    return " · ".join(names)
 
 
 def weather_label(code: int) -> str:
@@ -407,8 +434,10 @@ def render(
     y += 58
     draw.text((margin_x, y), lunar_text(today), font=font_date, fill=0)
     y += 44
-    draw.text((margin_x, y), festival_text(today), font=font_sub, fill=40)
-    y += 36
+    festival = festival_text(today)
+    if festival:
+        draw.text((margin_x, y), festival, font=font_sub, fill=40)
+        y += 36
     draw.text((margin_x, y), f"更新 {now.strftime('%H:%M')}", font=font_kicker, fill=110)
     y += 32
     draw.line((margin_x, y, inner_right, y), fill=0, width=3)
@@ -429,7 +458,7 @@ def render(
     draw.text((margin_x, y), "最近一周", font=font_sec, fill=0)
     y += 40
 
-    tips_top = HEIGHT - 268
+    tips_top = HEIGHT - 280
     content_bottom = tips_top - 12
 
     if not events:
@@ -464,11 +493,12 @@ def render(
     for group_name, items in TIP_GROUPS:
         draw.text((margin_x, ty + 4), group_name, font=font_small, fill=80)
         x = margin_x + 92
+        step = 175 if len(items) >= 4 else 220
         for item in items:
             box = 22
             draw.rectangle((x, ty + 6, x + box, ty + 6 + box), outline=0, width=2)
             draw.text((x + box + 8, ty), item, font=font_tip, fill=0)
-            x += 220
+            x += step
         ty += 52
 
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -483,9 +513,9 @@ def main() -> int:
     parser.add_argument("--days", type=int, default=int(env("DAYS_AHEAD", "7") or "7"))
     parser.add_argument("--title", default=env("DASHBOARD_TITLE", "出门看板"))
     parser.add_argument("--output", default=env("OUTPUT_PATH", "output/dashboard.png"))
-    parser.add_argument("--lat", type=float, default=float(env("WEATHER_LAT", "31.2304") or "31.2304"))
-    parser.add_argument("--lon", type=float, default=float(env("WEATHER_LON", "121.4737") or "121.4737"))
-    parser.add_argument("--city", default=env("WEATHER_CITY", "上海"))
+    parser.add_argument("--lat", type=float, default=float(env("WEATHER_LAT", "39.9063") or "39.9063"))
+    parser.add_argument("--lon", type=float, default=float(env("WEATHER_LON", "116.2230") or "116.2230"))
+    parser.add_argument("--city", default=env("WEATHER_CITY", "北京石景山"))
     parser.add_argument("--allow-empty-calendar", action="store_true")
     args = parser.parse_args()
 
@@ -497,7 +527,7 @@ def main() -> int:
         print("缺少 CALENDAR_ICS_URL / --ics-url", file=sys.stderr)
         return 2
 
-    weather = fetch_weather(args.lat, args.lon, args.timezone, args.city or "上海")
+    weather = fetch_weather(args.lat, args.lon, args.timezone, args.city or "北京石景山")
     render(events, args.title, tz, Path(args.output), weather)
     return 0
 

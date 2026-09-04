@@ -1,12 +1,10 @@
 #!/bin/sh
-# Kindle Paperwhite 10 出门看板：定时拉图并全屏显示
+# Kindle Paperwhite 10 出门看板：整点拉图并全屏显示
 #
-# 点「启动看板」后 Kindle 会回到主页并重绘界面，把刚画的图盖掉。
-# 所以这里每隔几秒重绘一次；联网拉新图仍按 FETCH_INTERVAL。
+# 点「启动看板」后系统会回到主页盖住画面，所以启动后只补绘几次；
+# 之后每个整点拉一次新图并显示，不再几秒刷一次。
 
-IMAGE_URL="${IMAGE_URL:-https://YOUR_USER.github.io/YOUR_REPO/dashboard.png}"
-FETCH_INTERVAL_SEC="${FETCH_INTERVAL_SEC:-1200}"
-REDRAW_INTERVAL_SEC="${REDRAW_INTERVAL_SEC:-8}"
+IMAGE_URL="${IMAGE_URL:-https://hou-boyu.github.io/kindle-dashboard/dashboard.png}"
 LOCAL_FILE="/mnt/us/dashboard/dashboard.png"
 BUNDLED_FILE="/mnt/us/dashboard/preview.png"
 LOG_FILE="/mnt/us/dashboard/dashboard.log"
@@ -73,7 +71,22 @@ fetch_image() {
   return 1
 }
 
-log "dashboard started url=$IMAGE_URL fetch=${FETCH_INTERVAL_SEC}s redraw=${REDRAW_INTERVAL_SEC}s"
+# 距下一个整点还有多少秒（busybox 友好）
+seconds_to_next_hour() {
+  MIN=$(date +%M)
+  SEC=$(date +%S)
+  case "$MIN" in 0*) MIN=${MIN#0} ;; esac
+  case "$SEC" in 0*) SEC=${SEC#0} ;; esac
+  [ -z "$MIN" ] && MIN=0
+  [ -z "$SEC" ] && SEC=0
+  LEFT=$((3600 - MIN * 60 - SEC))
+  if [ "$LEFT" -le 0 ]; then
+    LEFT=3600
+  fi
+  echo "$LEFT"
+}
+
+log "dashboard started url=$IMAGE_URL mode=hourly"
 prevent_sleep
 refresh_wifi
 
@@ -83,20 +96,29 @@ else
   log "initial fetch skipped/failed; using local image if any"
 fi
 
-LAST_FETCH="$(date +%s)"
 display_image || log "display failed: no png yet"
+# 启动后补绘几次，盖过主页重绘；之后不再高频刷新
+sleep 5
+prevent_sleep
+display_image || true
+sleep 10
+prevent_sleep
+display_image || true
 
 while true; do
+  WAIT="$(seconds_to_next_hour)"
+  log "sleep ${WAIT}s until next hour"
+  sleep "$WAIT"
   prevent_sleep
-  sleep "$REDRAW_INTERVAL_SEC"
-  NOW="$(date +%s)"
-  ELAPSED=$((NOW - LAST_FETCH))
-  if [ "$ELAPSED" -ge "$FETCH_INTERVAL_SEC" ]; then
-    refresh_wifi
-    if fetch_image; then
-      log "refresh ok"
-    fi
-    LAST_FETCH="$NOW"
+  refresh_wifi
+  if fetch_image; then
+    log "hourly fetch ok"
+  else
+    log "hourly fetch failed; keep current frame"
   fi
+  display_image || true
+  # 整点后再补绘一次，防止刚刷新就被系统盖掉
+  sleep 8
+  prevent_sleep
   display_image || true
 done
