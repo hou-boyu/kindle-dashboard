@@ -1,0 +1,11 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.env
+.DS_Store
+preview.png
+output/
+*.ics
+tools/springbreak/
+tools/*.zip
