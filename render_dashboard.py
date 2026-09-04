@@ -50,6 +50,7 @@ HOLIDAY_CN = {
     "National Day": "国庆节",
     "Mid-autumn Festival": "中秋节",
 }
+WMO_WEATHER = {
     0: "晴",
     1: "晴间多云",
     2: "多云",
